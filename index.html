@@ -402,6 +402,13 @@ async function exportPDF(){
   doc.setFont('Times','normal'); doc.setFontSize(36); doc.setTextColor(18,38,70);
   doc.text('FACTURE', 13, 45);
 
+  // Company details
+  doc.setFontSize(11); doc.setTextColor(0);
+  if (settings.companyName) doc.text(settings.companyName, 13, 55);
+  if (settings.companyAddress) doc.text(settings.companyAddress, 13, 60);
+  if (settings.phone) doc.text(`Tel: ${settings.phone}`, 13, 65);
+  if (settings.email) doc.text(`Email: ${settings.email}`, 13, 70);
+
   // Logo
   if(settings.logo){ try{ doc.addImage(settings.logo, 'PNG', 135, 10, 60, 60); }catch(e){} }
 
@@ -413,12 +420,13 @@ async function exportPDF(){
   const addrLines = (addr||'').split('\n');
   addrLines.forEach((ln,i)=> doc.text(ln, 15, 70 + (i*5)));
   // Client name at bottom right
-  if(client) doc.text(`Client: ${client}`, 150, 82);
+  if(client) doc.text(`Client: ${client}`, 150, 87);
 
   // Invoice meta
-  const invNum = document.getElementById('invoiceNumber').value;
-  const invDate = document.getElementById('invoiceDate').value;
-  doc.text(`N°: ${invNum}`, 150, 75); doc.text(`Date: ${invDate}`, 150, 70);
+  const invNum = document.getElementById('invoiceNumber').value.split('-')[0];
+  const invDateRaw = document.getElementById('invoiceDate').value;
+  const invDate = invDateRaw.split('-').reverse().join(' ');
+  doc.text(`N°: ${invNum}`, 150, 80); doc.text(`Date: ${invDate}`, 150, 75);
 
   // Table header and items with borders like HTML table
   const tableX = 15.25;
