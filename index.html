@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Application de Facturation — Index</title>
+<!-- CDN libraries (first load required) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
+<style>
+:root{--main:#122646;--accent:#EEB81C;--muted:#f5f5f5;}
+*{box-sizing:border-box;font-family:'Times New Roman', Times, serif}
+body{margin:0;background:var(--muted);color:#111}
+#app{display:flex;min-height:100vh}
+#sidebar{width:260px;background:#0f2540;color:#fff;padding:20px}
+#sidebar h1{font-size:20px;margin:0 0 10px}
+.nav-btn{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border-radius:8px;margin-bottom:8px;background:transparent;border:none;color:inherit;cursor:pointer}
+.nav-btn.active{background:rgba(255,255,255,0.06)}
+#content{flex:1;padding:20px}
+.tab-content{display:none;background:#fff;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,0.06)}
+.tab-content.active{display:block}
+.form-group{margin-bottom:10px}
+.form-row{display:flex;gap:10px;flex-wrap:wrap}
+input,textarea,select{width:100%;padding:8px;border:1px solid #ddd;border-radius:6px}
+table{width:100%;border-collapse:collapse;margin-top:12px}
+table th,table td{padding:8px;border:1px solid #eee;text-align:left}
+th{background:var(--main);color:#fff}
+.actions{display:flex;gap:10px;margin-top:12px}
+.btn-primary{background:var(--main);color:#fff;padding:8px 14px;border:none;border-radius:6px;cursor:pointer}
+.btn-danger{background:#d9534f;color:#fff;padding:8px 14px;border:none;border-radius:6px;cursor:pointer}
+.totals{margin-top:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-end}
+.total-row{display:flex;gap:12px;min-width:260px;justify-content:space-between;padding:6px 10px;border-radius:6px}
+.total-final{font-size:1.1em;font-weight:700;background:var(--main);color:#fff;padding:8px 12px}
+@media(max-width:800px){#sidebar{width:100%;display:flex;overflow:auto}#app{flex-direction:column}}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <h1>Facturation</h1>
+    <nav>
+      <button class="nav-btn active" data-tab="facture">📄 Facture</button>
+      <button class="nav-btn" data-tab="articles">📦 Base Articles</button>
+      <button class="nav-btn" data-tab="parametres">⚙️ Paramètres</button>
+    </nav>
+    <div style="margin-top:20px;color:#cbd5e1;font-size:12px">
+      <div>Fichier autonome</div>
+      <div style="margin-top:8px">PNG intégré (préféré)</div>
+    </div>
+  </aside>
+
+  <main id="content">
+    <!-- FACTURE -->
+    <section id="tab-facture" class="tab-content active">
+      <h2>Nouvelle Facture</h2>
+      <div class="form-row">
+        <div style="flex:1">
+          <label>Nom du client :</label>
+          <input id="clientName" type="text" placeholder="Nom du client">
+        </div>
+        <div style="width:220px">
+          <label>Date :</label>
+          <input id="invoiceDate" type="date">
+        </div>
+        <div style="width:220px">
+          <label>N° Facture :</label>
+          <input id="invoiceNumber" readonly>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Adresse :</label>
+        <textarea id="clientAddress" rows="2"></textarea>
+      </div>
+
+      <h3>Articles</h3>
+      <div class="form-row">
+        <input id="itemDescription" placeholder="Description" list="articles-list" style="flex:1">
+        <input id="itemPrice" type="number" step="0.01" placeholder="Prix unitaire" style="width:150px">
+        <input id="itemQuantity" type="number" step="1" value="1" style="width:100px">
+        <button id="addItemBtn">➕ Ajouter</button>
+      </div>
+
+      <table id="itemsTable" aria-label="Articles">
+        <thead>
+          <tr>
+            <th style="width:6%">No.</th>
+            <th style="width:54%">Description</th>
+            <th style="width:13%">Prix</th>
+            <th style="width:10%">Qté</th>
+            <th style="width:12%">Total</th>
+            <th style="width:5%">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="itemsBody"></tbody>
+      </table>
+
+      <div class="totals">
+        <div class="total-row"><span>Sous-total :</span><span id="subtotal">0.00</span></div>
+        <div id="taxRow" class="total-row" style="display:none"><span>TVA (<span id="taxRateLabel">16</span>%) :</span><span id="taxAmount">0.00</span></div>
+        <div class="total-row total-final"><span>TOTAL :</span><span id="grandTotal">0.00</span></div>
+      </div>
+
+      <div class="actions">
+        <button id="previewBtn">👁️ Aperçu PDF</button>
+        <button id="exportBtn" class="btn-primary">📄 Exporter en PDF</button>
+        <button id="duplicateBtn">📋 Dupliquer</button>
+      </div>
+      <datalist id="articles-list"></datalist>
+    </section>
+
+    <!-- BASE ARTICLES -->
+    <section id="tab-articles" class="tab-content">
+      <h2>Base Articles</h2>
+      <div class="form-group">
+        <input id="productName" placeholder="Nom de l'article">
+      </div>
+      <div class="form-group">
+        <textarea id="productDescription" placeholder="Description"></textarea>
+      </div>
+      <div class="form-row">
+        <input id="productPrice" type="number" step="0.01" placeholder="Prix unitaire">
+        <button id="saveProductBtn">💾 Enregistrer</button>
+      </div>
+      <div style="margin-top:12px">
+        <button id="exportCsvBtn">📤 Exporter CSV</button>
+        <input id="importCsvInput" type="file" accept=".csv" style="display:none">
+        <button id="importCsvBtn">📥 Importer CSV</button>
+      </div>
+
+      <table id="productsTable">
+        <thead><tr><th>Nom</th><th>Description</th><th>Prix</th><th>Actions</th></tr></thead>
+        <tbody id="productsBody"></tbody>
+      </table>
+    </section>
+
+    <!-- PARAMÈTRES -->
+    <section id="tab-parametres" class="tab-content">
+      <h2>Paramètres de l'entreprise</h2>
+      <div class="form-group"><label>Nom de l'entreprise :</label><input id="companyName"></div>
+      <div class="form-group"><label>Adresse :</label><textarea id="companyAddress" rows="2"></textarea></div>
+      <div class="form-row">
+        <div style="flex:1"><label>N° Impôt :</label><input id="taxNumber"></div>
+        <div style="flex:1"><label>RCCM :</label><input id="rccm"></div>
+        <div style="flex:1"><label>ID Nationale :</label><input id="nationalId"></div>
+      </div>
+      <div class="form-row">
+        <div style="flex:1"><label>Téléphone :</label><input id="phone"></div>
+        <div style="flex:1"><label>Email :</label><input id="email"></div>
+      </div>
+      <div class="form-group"><label>Slogan (optionnel) :</label><input id="slogan"></div>
+
+      <div class="form-group">
+        <label>Logo de l'entreprise :</label>
+        <input id="logoInput" type="file" accept="image/*">
+        <img id="logoPreview" style="max-width:200px;display:none;margin-top:8px">
+      </div>
+
+      <div class="form-group">
+        <label><input id="enableTax" type="checkbox"> Activer la TVA</label>
+      </div>
+      <div id="taxRateGroup" style="display:none" class="form-group">
+        <label>Taux de TVA (%) :</label><input id="taxRateValue" type="number" value="16" step="0.01">
+      </div>
+
+      <div class="form-group">
+        <label><input id="enableSignature" type="checkbox"> Activer zone signature/cachet</label>
+      </div>
+
+      <div class="form-group">
+        <label>Devise par défaut :</label>
+        <select id="defaultCurrency"><option value="FRC">FRC FC</option><option value="USD">USD $</option></select>
+      </div>
+      <div class="form-group">
+        <label>Taux de change (optionnel) :</label><input id="exchangeRate" type="number" step="0.01" placeholder="Ex: 2500">
+      </div>
+
+      <div style="margin-top:12px" class="data-actions">
+        <button id="saveSettingsBtn" class="btn-primary">💾 Enregistrer</button>
+        <button id="exportDataBtn">📤 Exporter données</button>
+        <button id="importDataBtn">📥 Importer données</button>
+        <button id="resetDataBtn" class="btn-danger">🗑️ Réinitialiser</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ========== App logic ========== */
+let products = JSON.parse(localStorage.getItem('products') || '[]');
+let settings = JSON.parse(localStorage.getItem('settings') || '{}');
+let invoiceNumberCount = parseInt(localStorage.getItem('invoiceNumber') || '0', 10) || 0;
+let lastInvoiceMonth = localStorage.getItem('lastInvoiceMonth') || null;
+let currentItems = [];
+
+// Utility: format number
+function fmt(n){return Number(n||0).toFixed(2)}
+
+// Invoice numbering
+function generateInvoiceNumber(){
+  const now = new Date();
+  const month = String(now.getMonth()+1).padStart(2,'0');
+  const day = String(now.getDate()).padStart(2,'0');
+  if(lastInvoiceMonth !== month){
+    invoiceNumberCount = 0;
+    lastInvoiceMonth = month;
+    localStorage.setItem('lastInvoiceMonth', month);
+  }
+  invoiceNumberCount++;
+  localStorage.setItem('invoiceNumber', invoiceNumberCount);
+  return `F${String(invoiceNumberCount).padStart(4,'0')}-${month}-${day}`;
+}
+
+function initApp(){
+  document.querySelectorAll('.nav-btn').forEach(b=>b.addEventListener('click',()=>{
+    document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(n=>n.classList.remove('active'));
+    document.getElementById('tab-'+b.dataset.tab).classList.add('active');
+    b.classList.add('active');
+  }));
+  document.getElementById('invoiceNumber').value = generateInvoiceNumber();
+  document.getElementById('invoiceDate').value = new Date().toISOString().slice(0,10);
+  loadSettings();
+  loadProducts();
+  renderItems();
+  updateAutocompleteList();
+  setupEventListeners();
+  calculateTotals();
+}
+
+function setupEventListeners(){
+  document.getElementById('addItemBtn').addEventListener('click', addItem);
+  document.getElementById('saveProductBtn').addEventListener('click', saveProduct);
+  document.getElementById('exportCsvBtn').addEventListener('click', exportCSV);
+  document.getElementById('importCsvBtn').addEventListener('click', ()=>document.getElementById('importCsvInput').click());
+  document.getElementById('importCsvInput').addEventListener('change', importCSV);
+  document.getElementById('saveSettingsBtn').addEventListener('click', saveSettings);
+  document.getElementById('enableTax').addEventListener('change', ()=>{
+    document.getElementById('taxRateGroup').style.display = document.getElementById('enableTax').checked?'block':'none';
+    calculateTotals();
+  });
+  document.getElementById('logoInput').addEventListener('change', handleLogoUpload);
+  document.getElementById('exportBtn').addEventListener('click', exportPDF);
+  document.getElementById('previewBtn').addEventListener('click', previewPDF);
+  document.getElementById('duplicateBtn').addEventListener('click', duplicateInvoice);
+  document.getElementById('resetDataBtn').addEventListener('click', resetData);
+  document.getElementById('exportDataBtn').addEventListener('click', exportAllData);
+  document.getElementById('importDataBtn').addEventListener('click', ()=>document.getElementById('importJsonInput')?.click());
+  ['itemDescription','itemPrice','itemQuantity'].forEach(id=>{
+    document.getElementById(id).addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ addItem(); } });
+  });
+}
+
+function addItem(){
+  const desc = document.getElementById('itemDescription').value.trim();
+  const price = parseFloat(document.getElementById('itemPrice').value) || 0;
+  const qty = parseInt(document.getElementById('itemQuantity').value) || 1;
+  if(!desc || price<=0){ alert('Veuillez remplir la description et un prix valide'); return; }
+  const item = {id:Date.now(), description:desc, price, quantity:qty, total: price*qty};
+  currentItems.push(item);
+  renderItems();
+  calculateTotals();
+  document.getElementById('itemDescription').value=''; document.getElementById('itemPrice').value=''; document.getElementById('itemQuantity').value='1';
+}
+
+function renderItems(){
+  const tbody = document.getElementById('itemsBody'); tbody.innerHTML='';
+  currentItems.forEach((it,i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${i+1}</td><td>${it.description}</td><td>${fmt(it.price)}</td><td>${it.quantity}</td><td>${fmt(it.total)}</td>
+      <td><button onclick="removeItem(${it.id})">🗑️</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function removeItem(id){ currentItems = currentItems.filter(it=>it.id!==id); renderItems(); calculateTotals(); }
+
+function calculateTotals(){
+  const subtotal = currentItems.reduce((s,i)=>s+i.total,0);
+  const taxEnabled = document.getElementById('enableTax').checked;
+  const taxRate = parseFloat(document.getElementById('taxRateValue').value) || 0;
+  const tax = taxEnabled ? subtotal * (taxRate/100) : 0;
+  const grand = subtotal + tax;
+  document.getElementById('subtotal').textContent = fmt(subtotal);
+  document.getElementById('taxAmount').textContent = fmt(tax);
+  document.getElementById('taxRateLabel').textContent = String(taxRate);
+  document.getElementById('grandTotal').textContent = fmt(grand);
+  document.getElementById('taxRow').style.display = taxEnabled ? 'flex' : 'none';
+}
+
+/* Products CRUD */
+function loadProducts(){
+  const tbody = document.getElementById('productsBody'); tbody.innerHTML='';
+  products.forEach(p=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.description}</td><td>${fmt(p.price)}</td>
+      <td><button onclick="insertProductIntoInvoice(${p.id})">➕</button> <button onclick="editProduct(${p.id})">✏️</button> <button onclick="deleteProduct(${p.id})">🗑️</button></td>`;
+    tbody.appendChild(tr);
+  });
+}
+function saveProduct(){
+  const name = document.getElementById('productName').value.trim();
+  const desc = document.getElementById('productDescription').value.trim();
+  const price = parseFloat(document.getElementById('productPrice').value) || 0;
+  if(!name || price<=0){ alert('Nom et prix requis'); return; }
+  const p={id:Date.now(), name, description:desc, price};
+  products.push(p); localStorage.setItem('products', JSON.stringify(products));
+  document.getElementById('productName').value=''; document.getElementById('productDescription').value=''; document.getElementById('productPrice').value='';
+  loadProducts(); updateAutocompleteList();
+}
+function deleteProduct(id){
+  if(!confirm('Supprimer cet article ?')) return;
+  products = products.filter(p=>p.id!==id); localStorage.setItem('products', JSON.stringify(products)); loadProducts(); updateAutocompleteList();
+}
+function editProduct(id){
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  const name = prompt('Nom', p.name); if(!name) return;
+  p.name = name; p.description = prompt('Description', p.description)||p.description;
+  p.price = parseFloat(prompt('Prix', p.price))||p.price;
+  localStorage.setItem('products', JSON.stringify(products)); loadProducts(); updateAutocompleteList();
+}
+function insertProductIntoInvoice(id){
+  const p = products.find(x=>x.id===id);
+  if(!p) return;
+  document.getElementById('itemDescription').value = p.name;
+  document.getElementById('itemPrice').value = p.price;
+}
+
+/* CSV import/export */
+function exportCSV(){
+  const csv = ['Nom,Description,Prix'];
+  products.forEach(p=>csv.push(`"${p.name.replace(/"/g,'""')}","${(p.description||'').replace(/"/g,'""')}",${p.price}`));
+  const blob = new Blob([csv.join('\n')],{type:'text/csv;charset=utf-8'}); saveAs(blob,'articles.csv');
+}
+function importCSV(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = function(ev){
+    const lines = ev.target.result.split(/\r?\n/).filter(Boolean);
+    lines.slice(1).forEach(line=>{
+      const cols = line.split(',');
+      const name = cols[0]?.replace(/^"|"$/g,'')||''; const desc = cols[1]?.replace(/^"|"$/g,'')||''; const price = parseFloat(cols[2])||0;
+      if(name) products.push({id:Date.now()+Math.random(), name, description:desc, price});
+    });
+    localStorage.setItem('products', JSON.stringify(products)); loadProducts(); updateAutocompleteList();
+  };
+  r.readAsText(f);
+}
+
+/* Settings */
+function loadSettings(){
+  settings = JSON.parse(localStorage.getItem('settings') || '{}');
+  document.getElementById('companyName').value = settings.companyName || '';
+  document.getElementById('companyAddress').value = settings.companyAddress || '';
+  document.getElementById('taxNumber').value = settings.taxNumber || '';
+  document.getElementById('rccm').value = settings.rccm || '';
+  document.getElementById('nationalId').value = settings.nationalId || '';
+  document.getElementById('phone').value = settings.phone || '';
+  document.getElementById('email').value = settings.email || '';
+  document.getElementById('slogan').value = settings.slogan || '';
+  document.getElementById('enableTax').checked = settings.enableTax || false;
+  document.getElementById('taxRateValue').value = settings.taxRate || 16;
+  document.getElementById('enableSignature').checked = settings.enableSignature || false;
+  document.getElementById('defaultCurrency').value = settings.defaultCurrency || 'FRC';
+  document.getElementById('exchangeRate').value = settings.exchangeRate || 0;
+  if(settings.logo){ document.getElementById('logoPreview').src = settings.logo; document.getElementById('logoPreview').style.display='block'; }
+  document.getElementById('taxRateGroup').style.display = document.getElementById('enableTax').checked ? 'block':'none';
+}
+function saveSettings(){
+  settings = {
+    companyName: document.getElementById('companyName').value,
+    companyAddress: document.getElementById('companyAddress').value,
+    taxNumber: document.getElementById('taxNumber').value,
+    rccm: document.getElementById('rccm').value,
+    nationalId: document.getElementById('nationalId').value,
+    phone: document.getElementById('phone').value,
+    email: document.getElementById('email').value,
+    slogan: document.getElementById('slogan').value,
+    logo: settings.logo || null,
+    enableTax: document.getElementById('enableTax').checked,
+    taxRate: parseFloat(document.getElementById('taxRateValue').value)||0,
+    enableSignature: document.getElementById('enableSignature').checked,
+    defaultCurrency: document.getElementById('defaultCurrency').value,
+    exchangeRate: parseFloat(document.getElementById('exchangeRate').value)||0
+  };
+  localStorage.setItem('settings', JSON.stringify(settings));
+  alert('Paramètres enregistrés !');
+}
+function handleLogoUpload(e){
+  const f = e.target.files[0]; if(!f) return;
+  const r = new FileReader(); r.onload = function(ev){ settings.logo = ev.target.result; document.getElementById('logoPreview').src = settings.logo; document.getElementById('logoPreview').style.display='block'; localStorage.setItem('settings', JSON.stringify(settings)); };
+  r.readAsDataURL(f);
+}
+
+/* PDF generation using jsPDF (unit mm A4) */
+async function exportPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'mm',format:'a4'});
+  // background image disabled
+
+  // Title
+  doc.setFont('Times','normal'); doc.setFontSize(36); doc.setTextColor(18,38,70);
+  doc.text('FACTURE', 13, 45);
+
+  // Logo
+  if(settings.logo){ try{ doc.addImage(settings.logo, 'PNG', 135, 10, 60, 60); }catch(e){} }
+
+  // Client data
+  doc.setFontSize(11); doc.setTextColor(0);
+  const client = document.getElementById('clientName').value || '';
+  const addr = document.getElementById('clientAddress').value || '';
+  // multiline address
+  const addrLines = (addr||'').split('\n');
+  addrLines.forEach((ln,i)=> doc.text(ln, 15, 70 + (i*5)));
+  // Client name at bottom right
+  if(client) doc.text(`Client: ${client}`, 150, 82);
+
+  // Invoice meta
+  const invNum = document.getElementById('invoiceNumber').value;
+  const invDate = document.getElementById('invoiceDate').value;
+  doc.text(`N°: ${invNum}`, 150, 75); doc.text(`Date: ${invDate}`, 150, 70);
+
+  // Table header and items with borders like HTML table
+  const tableX = 15.25;
+  const tableWidth = 180;
+  const startY = 96.4;
+  const rowHeight = 8;
+  const colWidths = [11.16, 100.8, 23.4, 18, 26.64]; // proportional to HTML widths: 6%, 54%, 13%, 10%, 12%
+
+  // Draw header row with blue background
+  doc.setFillColor(18,38,70);
+  doc.rect(tableX, startY-6, tableWidth, rowHeight, 'F');
+  doc.setDrawColor(18,38,70); doc.setLineWidth(0.5); // blue borders
+  doc.rect(tableX, startY-6, tableWidth, rowHeight); // header border
+
+  // Draw vertical lines for header
+  let xPos = tableX;
+  for(let i = 0; i < colWidths.length; i++){
+    xPos += colWidths[i];
+    doc.line(xPos, startY-6, xPos, startY+2);
+  }
+
+  // Header text
+  doc.setTextColor(255); doc.setFontSize(12);
+  const headers = ['N°','Désignation','Prix','Qté','Total'];
+  xPos = tableX;
+  headers.forEach((h,i)=>{
+    const colCenter = xPos + colWidths[i]/2;
+    doc.text(h, colCenter, startY-1, {align: 'center'}); // center vertically in header
+    xPos += colWidths[i];
+  });
+
+  // Items rows
+  doc.setTextColor(0); doc.setFontSize(11);
+  let y = startY + 2;
+  currentItems.forEach((it, idx)=>{
+    if(y + rowHeight > 270){ doc.addPage(); y=20; }
+
+    // Draw row border
+    doc.setDrawColor(18,38,70); doc.setLineWidth(0.5); // blue borders
+    doc.rect(tableX, y, tableWidth, rowHeight);
+
+    // Draw vertical lines for row
+    xPos = tableX;
+    for(let i = 0; i < colWidths.length; i++){
+      xPos += colWidths[i];
+      doc.line(xPos, y, xPos, y + rowHeight);
+    }
+
+    // Item data - properly positioned within cells with strict maxWidth
+    doc.text(String(idx+1), tableX + 1, y + 5.5, {maxWidth: colWidths[0] - 2});
+    doc.text(it.description, tableX + colWidths[0] + 1, y + 5.5, {maxWidth: colWidths[1] - 2});
+    doc.text(fmt(it.price), tableX + colWidths[0] + colWidths[1] + colWidths[2] - 1, y + 5.5, {align:'right', maxWidth: colWidths[2] - 2});
+    doc.text(String(it.quantity), tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] - 1, y + 5.5, {align:'right', maxWidth: colWidths[3] - 2});
+    doc.text(fmt(it.total), tableX + colWidths[0] + colWidths[1] + colWidths[2] + colWidths[3] + colWidths[4] - 1, y + 5.5, {align:'right', maxWidth: colWidths[4] - 2});
+
+    y += rowHeight;
+  });
+
+  // Totals (aligned to right)
+  const subtotal = parseFloat(document.getElementById('subtotal').textContent)||0;
+  const tax = parseFloat(document.getElementById('taxAmount').textContent)||0;
+  doc.setFontSize(11);
+  if(document.getElementById('enableTax').checked){
+    doc.text('Sous-total:', 160, y+8, {align:'right'}); doc.text(fmt(subtotal), 200, y+8, {align:'right'});
+    doc.text(`TVA (${document.getElementById('taxRateValue').value}%) :`, 160, y+15, {align:'right'}); doc.text(fmt(tax), 200, y+15, {align:'right'});
+  }
+  // Blue band for final total (aligned with table, rounded corners)
+  doc.setFillColor(18,38,70); doc.roundedRect(tableX, y+18, tableWidth, 10, 2, 2, 'F');
+  doc.setTextColor(255); doc.setFontSize(12);
+  doc.text('TOTAL', tableX + tableWidth/2, y+26, {align:'center'}); doc.text(fmt(subtotal+tax), tableX + tableWidth - 5, y+26, {align:'right'});
+  doc.setTextColor(0);
+
+  // Footer company info with blue band across full page width
+  doc.setFillColor(18,38,70); doc.rect(0, 280, 210, 15, 'F'); // blue band full width
+  doc.setTextColor(255); doc.setFontSize(9);
+  if(settings.companyAddress) doc.text(settings.companyAddress, 15, 285);
+  if(settings.phone) doc.text('Tel: '+settings.phone, 15, 290);
+  if(settings.email) doc.text('Email: '+settings.email, 70, 290);
+  if(settings.slogan) doc.text(settings.slogan, 15, 295);
+  doc.setTextColor(0);
+
+  // Zone signature (if enabled)
+  if(settings.enableSignature){
+    doc.setDrawColor(0); doc.rect(15, y+32, 60, 20); doc.text('Signature', 20, y+45);
+  }
+
+  // Save file with format: F0001-MM-DD-Client.pdf
+  const safeClient = (client||'client').replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_\-]/g,'');
+  const filename = `${invNum}-${safeClient}.pdf`;
+  doc.save(filename);
+
+  // After export reset invoice items and increment number
+  currentItems = [];
+  renderItems(); calculateTotals();
+  document.getElementById('invoiceNumber').value = generateInvoiceNumber();
+  document.getElementById('clientName').value=''; document.getElementById('clientAddress').value='';
+}
+
+/* Preview: open a new window with HTML preview */
+function previewPDF(){
+  const w = window.open('','_blank');
+  const html = `
+  <html><head><title>Aperçu</title><style>body{margin:0;font-family:Times New Roman} .page{width:210mm;height:297mm;padding:10mm;box-sizing:border-box}</style></head>
+  <body><div class="page">
+    <h1 style="color:#122646;margin:0 0 10mm 0">FACTURE</h1>
+    <div>Client: ${document.getElementById('clientName').value||''}</div>
+    <div style="position:absolute;right:10mm;top:10mm">N°:${document.getElementById('invoiceNumber').value} - Date:${document.getElementById('invoiceDate').value}</div>
+  </div></body></html>`;
+  w.document.write(html); w.document.close();
+}
+
+/* Duplicate invoice: copy last stored invoice data to current */
+function duplicateInvoice(){
+  if(!confirm('Dupliquer la facture actuelle ?')) return;
+  const copyItems = currentItems.map(i=>({...i,id:Date.now()+Math.random()}));
+  currentItems = currentItems.concat(copyItems);
+  renderItems(); calculateTotals();
+}
+
+/* Data export/import */
+function exportAllData(){
+  const data = {products, settings};
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+  saveAs(blob, 'facturation_backup.json');
+}
+function resetData(){
+  if(!confirm('⚠️ Effacer toutes les données ?')) return;
+  localStorage.clear(); location.reload();
+}
+
+/* Autocomplete list */
+function updateAutocompleteList(){
+  const dl = document.getElementById('articles-list'); dl.innerHTML='';
+  products.forEach(p=>{
+    const opt = document.createElement('option'); opt.value = p.name; opt.dataset.price = p.price; dl.appendChild(opt);
+  });
+  document.getElementById('itemDescription').addEventListener('input', function(){
+    const p = products.find(x=>x.name === this.value);
+    if(p) document.getElementById('itemPrice').value = p.price;
+  });
+}
+
+/* Initialize on DOM ready */
+document.addEventListener('DOMContentLoaded', initApp);
+
+</script>
+</body>
+</html>
