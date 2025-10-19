@@ -518,14 +518,30 @@ async function exportPDF(){
   doc.setFillColor(18,38,70); doc.rect(0, footerY, 210, footerHeight, 'F'); // blue band full width
   doc.setTextColor(255); doc.setFont('Helvetica', 'normal'); doc.setFontSize(9);
 
-  const footerText = [
-    settings.companyAddress,
-    `Tel: ${settings.phone} | Email: ${settings.email}`,
-    `N° Impôt: ${settings.taxNumber} | RCCM: ${settings.rccm} | ID Nationale: ${settings.nationalId}`,
-    settings.slogan
-  ].filter(Boolean).join(' - ');
+  const footerLines = [];
+  if (settings.companyAddress) footerLines.push(settings.companyAddress);
 
-  doc.text(footerText, 105, footerY + 8, { align: 'center' });
+  const contactInfo = [
+    settings.phone ? `Tel: ${settings.phone}` : null,
+    settings.email ? `Email: ${settings.email}` : null
+  ].filter(Boolean).join(' | ');
+  if (contactInfo) footerLines.push(contactInfo);
+
+  const legalInfo = [
+    settings.taxNumber ? `N° Impôt: ${settings.taxNumber}` : null,
+    settings.rccm ? `RCCM: ${settings.rccm}` : null,
+    settings.nationalId ? `ID Nationale: ${settings.nationalId}` : null
+  ].filter(Boolean).join(' | ');
+  if (legalInfo) footerLines.push(legalInfo);
+
+  if (settings.slogan) footerLines.push(settings.slogan);
+
+  const numLines = footerLines.length;
+  const v_padding = (footerHeight - (numLines * 4)) / 2;
+
+  footerLines.forEach((line, index) => {
+    doc.text(line, 105, footerY + v_padding + 3 + (index * 4), { align: 'center' });
+  });
   doc.setTextColor(0);
 
   // Zone signature (if enabled)
